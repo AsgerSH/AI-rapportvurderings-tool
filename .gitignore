@@ -1,0 +1,17 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+
+# Node / npm
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Environment
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store

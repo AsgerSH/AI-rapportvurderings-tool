@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ai-praktikrapport-backend
+    runtime: java
+    buildCommand: cd backend && mvn package -DskipTests
+    startCommand: java -jar backend/target/vurdering-0.0.1-SNAPSHOT.jar
+    envVars:
+      - key: SECRETAPIKEY
+        sync: false
