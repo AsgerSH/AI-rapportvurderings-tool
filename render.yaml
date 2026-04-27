@@ -3,6 +3,7 @@ services:
     name: ai-praktikrapport-backend
     runtime: docker
     dockerfilePath: backend/Dockerfile
+    dockerContext: backend
     envVars:
       - key: SECRETAPIKEY
         sync: false
