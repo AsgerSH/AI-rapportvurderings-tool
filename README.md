@@ -1,61 +1,107 @@
-# AI-rapportvurderings-tool
+# AI Praktikrapportvurdering
 
-Vejledende AI-baseret feedback på praktikrapporter, bygget som skoleopgave på datamatikeruddannelsen.
+Vejledende AI-baseret feedback på praktikrapporter fra datamatikeruddannelsen på Erhvervsakademi København.
+
+Brugeren indsætter eller uploader en praktikrapport (tekst, .md eller .pdf) og modtager struktureret feedback baseret på en rubric udledt af EK's egne vurderingskriterier.
 
 ## Arkitektur
 
 ```
-backend/   Java 21 + Spring Boot 3.4 (REST API)
-frontend/  React 18 + Vite (SPA)
+frontend/   React 18 + Vite → GitHub Pages
+backend/    Java 21 + Spring Boot 3.4 → Render (Docker)
+```
+
+Frontend kalder backend via REST. Backend kalder OpenAI Responses API med `gpt-4.1-nano`.
+
+---
+
+## Projektstruktur
+
+```
+├── .github/workflows/
+│   └── deploy-frontend.yml     # GitHub Actions → GitHub Pages
+├── backend/
+│   ├── Dockerfile
+│   ├── pom.xml
+│   └── src/main/
+│       ├── java/dk/ek/vurdering/
+│       │   ├── VurderingApplication.java
+│       │   ├── config/WebConfig.java           # CORS
+│       │   ├── controller/EvaluationController.java
+│       │   ├── service/OpenAIService.java       # OpenAI-kald
+│       │   └── dto/                             # Request/Response/CriteriaFeedback
+│       └── resources/
+│           ├── application.properties
+│           └── prompts/system-prompt.txt        # Indlæses ved opstart
+├── frontend/
+│   ├── vite.config.js                          # Proxy /api → localhost:8080
+│   └── src/
+│       ├── App.jsx / App.css
+│       └── components/
+│           ├── EvaluationForm.jsx
+│           └── EvaluationResult.jsx
+├── data/                                        # Vurderingsgrundlag (kilde for rubric)
+│   ├── dare-share-care.md
+│   ├── krav-til-rapport.md
+│   └── laeringsmaal.md
+├── prompts/                                     # Dokumentation af Step 1-2
+│   ├── rubric.md
+│   ├── system-prompt.md
+│   └── user-prompt-template.md
+├── package.json                                 # npm run frontend / backend / dev
+└── render.yaml                                  # Render deployment-konfiguration
 ```
 
 ---
 
-## Kom i gang lokalt
+## Kør lokalt
 
 ### Krav
 
-- Java 21+ (`java -version`)
-- Maven 3.9+ (`mvn -version`)
-- Node 18+ + npm (`node -version`)
+- Java 21+ og Maven 3.9+
+- Node 18+ og npm
 
-### 1. Sæt API-nøglen som miljøvariabel
-
-```bash
-export SECRETAPIKEY=din-openai-api-nøgle
-```
-
-### 2. Start backend og frontend (separat)
+### Opsætning
 
 ```bash
-# Terminal 1 — backend (port 8080)
+# Sæt API-nøgle (kræves af backenden)
+export SECRETAPIKEY=sk-...
+
+# Terminal 1 — backend på port 8080
 npm run backend
 
-# Terminal 2 — frontend (port 5173)
+# Terminal 2 — frontend på port 5173
 npm run frontend
 ```
 
 Eller start begge på én gang:
 
 ```bash
-npm install        # installer concurrently (kun første gang)
+npm install   # kun første gang
 npm run dev
 ```
 
-Åbn <http://localhost:5173> i browseren.
+Åbn <http://localhost:5173>.
 
 ---
 
-## API-endpoint
+## API
 
 ### `POST /api/evaluations`
 
-**Request:**
+Modtager rapporttekst som JSON.
+
+**Request**
 ```json
-{ "text": "Hele rapportteksten her..." }
+{ "text": "Rapporttekst her..." }
 ```
 
-**Response (200):**
+### `POST /api/evaluations/file`
+
+Modtager en fil via multipart/form-data (`.md`, `.txt` eller `.pdf`).
+
+### Response (200)
+
 ```json
 {
   "overallAssessment": "...",
@@ -69,33 +115,15 @@ npm run dev
 }
 ```
 
-**Fejlresponser:**
-- `400` — tom opgavetekst
-- `500` — fejl i OpenAI-kald
+**Fejlkoder:** `400` ved tomt input · `500` ved fejl i OpenAI-kald
 
 ### Test med curl
 
 ```bash
 curl -X POST http://localhost:8080/api/evaluations \
   -H "Content-Type: application/json" \
-  -d '{"text": "Her indsættes rapportteksten..."}'
+  -d '{"text": "Rapporttekst her..."}'
 ```
-
----
-
-## Sæt SECRETAPIKEY
-
-### Lokalt (macOS/Linux)
-```bash
-export SECRETAPIKEY=sk-...
-```
-
-Tilføj til `~/.zshrc` eller `~/.bash_profile` for permanent adgang.
-
-### GitHub Secret (til deployment)
-1. Gå til dit repo → **Settings → Secrets and variables → Actions**
-2. Klik **New repository secret**
-3. Navn: `SECRETAPIKEY`, Værdi: din API-nøgle
 
 ---
 
@@ -103,62 +131,32 @@ Tilføj til `~/.zshrc` eller `~/.bash_profile` for permanent adgang.
 
 ### Frontend → GitHub Pages
 
-Byg frontend:
-```bash
-cd frontend && npm run build
-```
+GitHub Actions bygger og deployer automatisk ved push til `main`.
 
-Deploy `frontend/dist/` til GitHub Pages. Med GitHub Actions:
-- Trigger: push til `main`
-- Job: `npm run build` i `frontend/`
-- Deploy `dist/` med `actions/deploy-pages`
-
-**Vigtigt:** Frontend skal pege på backend-URL i produktion. Sæt `VITE_API_URL` som env var og brug den i `fetch`-kaldene (i stedet for relativ `/api`).
+Kræver to ting i repo-indstillingerne:
+1. **Settings → Pages → Source:** GitHub Actions
+2. **Settings → Secrets → Actions:** `VITE_API_URL` = din Render-backend-URL
 
 ### Backend → Render
 
-1. Opret nyt **Web Service** på [render.com](https://render.com)
-2. Root directory: `backend`
-3. Build command: `mvn package -DskipTests`
-4. Start command: `java -jar target/vurdering-0.0.1-SNAPSHOT.jar`
-5. Tilføj Environment Variable: `SECRETAPIKEY` = din nøgle
+Backenden er konfigureret via `render.yaml` og bygges med Docker.
 
----
+Manuelt setup i Render-dashboardet:
 
-## Projektstruktur
+| Felt | Værdi |
+|------|-------|
+| Environment | Docker |
+| Dockerfile Path | `backend/Dockerfile` |
+| Environment Variable | `SECRETAPIKEY` = din OpenAI-nøgle |
 
-```
-AI-vurderings-tool/
-├── package.json              # root-scripts: frontend / backend / dev
-├── data/
-│   ├── dare-share-care.md    # vurderingsgrundlag
-│   ├── krav-til-rapport.md   # vurderingsgrundlag
-│   └── laeringsmaal.md       # vurderingsgrundlag
-├── prompts/
-│   ├── rubric.md             # rubric (Step 1)
-│   ├── system-prompt.md      # systemprompt (Step 2)
-│   └── user-prompt-template.md
-├── backend/
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/dk/ek/vurdering/
-│       │   ├── VurderingApplication.java
-│       │   ├── config/WebConfig.java        (CORS)
-│       │   ├── controller/EvaluationController.java
-│       │   ├── service/OpenAIService.java
-│       │   └── dto/  (EvaluationRequest, EvaluationResponse, CriteriaFeedback)
-│       └── resources/
-│           ├── application.properties
-│           └── prompts/system-prompt.txt    (indlæses ved opstart)
-└── frontend/
-    ├── package.json
-    ├── vite.config.js        (proxy /api → localhost:8080)
-    └── src/
-        ├── App.jsx
-        ├── App.css
-        └── components/
-            ├── EvaluationForm.jsx
-            └── EvaluationResult.jsx
+### API-nøgle lokalt
+
+```bash
+# Midlertidigt (kun denne session)
+export SECRETAPIKEY=sk-...
+
+# Permanent
+echo 'export SECRETAPIKEY=sk-...' >> ~/.zshrc && source ~/.zshrc
 ```
 
 ---
@@ -166,13 +164,13 @@ AI-vurderings-tool/
 ## Refleksion
 
 ### Hvad virker godt
-- Rubricen er tæt knyttet til de tre kildefiler (krav, læringsmål, DARE/SHARE/CARE)
-- Struktureret JSON-output giver konkret, sektionsopdelt feedback
-- Systemprompten beder modellen om at pege på specifikke passager frem for generiske kommentarer
-- Vite-proxyen gør at frontend og backend kan køre lokalt uden CORS-problemer
+- Rubricen er tæt knyttet til EK's egne vurderingsdokumenter (krav, læringsmål, DARE/SHARE/CARE)
+- Struktureret JSON-output giver konkret, sektionsopdelt feedback frem for løs tekst
+- Systemprompten instruerer modellen i at pege på specifikke passager frem for at give generiske svar
+- Fil-upload understøtter både .md (browser-side) og .pdf (server-side med PDFBox)
 
 ### Begrænsninger
-- Modellen kan ikke verificere formalia (fx om kvitteringen reelt er vedhæftet)
-- Vurderingen er ikke-deterministisk — to kald kan give lidt forskellige svar
-- `gpt-4.1-nano` er en lille model; komplekse rapporter kan give overfladisk analyse
-- Ingen autentifikation — endpointet er åbent (acceptabelt for skoleprojekt)
+- Modellen kan ikke verificere formalia den ikke kan læse (fx om en kvittering reelt er vedhæftet som bilag)
+- Vurderingen er ikke-deterministisk — to kald på samme rapport giver ikke nødvendigvis identisk output
+- `gpt-4.1-nano` er en kompakt model; meget lange eller komplekse rapporter kan give overfladisk analyse
+- Endpointet har ingen autentifikation (acceptabelt for et skoleprojekt)
