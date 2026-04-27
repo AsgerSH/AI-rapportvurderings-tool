@@ -1,9 +1,9 @@
 # Byg-fase: kompiler JAR med Maven og Java 21
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
-COPY pom.xml .
+COPY backend/pom.xml .
 RUN mvn dependency:go-offline -B
-COPY src ./src
+COPY backend/src ./src
 RUN mvn package -DskipTests -B
 
 # Kørsel-fase: slim JRE-image med kun det der skal bruges
